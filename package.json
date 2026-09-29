@@ -1,0 +1,13 @@
+{
+  "name": "questly",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Questly - a gamified quest board (CodeBox Bootcamp demo app)",
+  "scripts": {
+    "dev": "concurrently -n backend,frontend -c blue,magenta \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "install:all": "npm install --prefix backend && npm install --prefix frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
