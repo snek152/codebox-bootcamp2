@@ -1,74 +1,74 @@
-const BASE_URL = 'http://localhost:3000/api'
-const TOKEN_KEY = 'questly_token'
+const BASE = 'http://localhost:3000/api'
 
-export function getToken() {
-  return localStorage.getItem(TOKEN_KEY)
+class ApiError extends Error {
+  constructor(message, status) {
+    super(message)
+    this.status = status
+  }
 }
 
-function setToken(token) {
-  if (token) localStorage.setItem(TOKEN_KEY, token)
+let onUnauthorized = null
+export function setUnauthorizedHandler(fn) {
+  onUnauthorized = fn
 }
 
-export function clearToken() {
-  localStorage.removeItem(TOKEN_KEY)
+function getToken() {
+  return localStorage.getItem('signal_token')
 }
 
-async function request(path, { method = 'GET', body, auth = false } = {}) {
+async function request(path, { method = 'GET', body, auth = true } = {}) {
   const headers = { 'Content-Type': 'application/json' }
   if (auth) {
     const token = getToken()
     if (token) headers.Authorization = `Bearer ${token}`
   }
-
   let res
   try {
-    res = await fetch(`${BASE_URL}${path}`, {
+    res = await fetch(`${BASE}${path}`, {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     })
+  } catch (err) {
+    throw new ApiError('Cannot reach the Signal API. Is the backend running?', 0)
+  }
+  if (res.status === 401 && auth) {
+    onUnauthorized?.()
+  }
+  if (res.status === 204) return null
+  let data = null
+  try {
+    data = await res.json()
   } catch {
-    throw new Error('Cannot reach the server. Is the backend running?')
+    // no body
   }
-
-  const isNoContent = res.status === 204
-  const data = isNoContent ? null : await res.json().catch(() => ({}))
-
   if (!res.ok) {
-    throw new Error(data?.error || `Request failed (${res.status})`)
+    throw new ApiError(data?.error || `Request failed (${res.status})`, res.status)
   }
-
   return data
 }
 
-export async function signup(username, password) {
-  const data = await request('/auth/signup', { method: 'POST', body: { username, password } })
-  setToken(data.token)
-  return data
-}
+export const signup = (username, password) =>
+  request('/auth/signup', { method: 'POST', body: { username, password }, auth: false })
 
-export async function login(username, password) {
-  const data = await request('/auth/login', { method: 'POST', body: { username, password } })
-  setToken(data.token)
-  return data
-}
+export const login = (username, password) =>
+  request('/auth/login', { method: 'POST', body: { username, password }, auth: false })
 
-export function getMe() {
-  return request('/me', { auth: true })
-}
+export const me = () => request('/me')
 
-export function getQuests() {
-  return request('/quests', { auth: true })
-}
+export const listMonitors = () => request('/monitors')
 
-export function createQuest({ title, description, difficulty }) {
-  return request('/quests', { method: 'POST', auth: true, body: { title, description, difficulty } })
-}
+export const createMonitor = (payload) => request('/monitors', { method: 'POST', body: payload })
 
-export function updateQuest(id, patch) {
-  return request(`/quests/${id}`, { method: 'PUT', auth: true, body: patch })
-}
+export const updateMonitor = (id, payload) =>
+  request(`/monitors/${id}`, { method: 'PUT', body: payload })
 
-export function deleteQuest(id) {
-  return request(`/quests/${id}`, { method: 'DELETE', auth: true })
-}
+export const deleteMonitor = (id) => request(`/monitors/${id}`, { method: 'DELETE' })
+
+export const listChecks = (id, limit = 100) => request(`/monitors/${id}/checks?limit=${limit}`)
+
+export const checkNow = (id) => request(`/monitors/${id}/check`, { method: 'POST' })
+
+export const streamUrl = (token) => `${BASE}/stream?token=${encodeURIComponent(token)}`
+
+export { ApiError }

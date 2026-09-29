@@ -1,5 +1,5 @@
 {
-  "name": "questly-frontend",
+  "name": "signal-frontend",
   "private": true,
   "version": "0.0.1",
   "type": "module",
@@ -9,6 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource-variable/geist": "^5.1.0",
+    "@fontsource-variable/geist-mono": "^5.1.0",
+    "@phosphor-icons/react": "^2.1.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

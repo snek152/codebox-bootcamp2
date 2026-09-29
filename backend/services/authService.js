@@ -4,17 +4,10 @@ const db = require('../db/database');
 
 const SALT_ROUNDS = 10;
 
-function levelFor(xp) {
-  return Math.floor(xp / 100) + 1;
-}
-
 function toPublicUser(row) {
   return {
     id: row.id,
     username: row.username,
-    xp: row.xp,
-    level: levelFor(row.xp),
-    streak: row.streak,
   };
 }
 
@@ -25,6 +18,11 @@ function sign(userId) {
 function signup(username, password) {
   if (!username || !password) {
     const err = new Error('username and password are required');
+    err.status = 400;
+    throw err;
+  }
+  if (password.length < 8) {
+    const err = new Error('password must be at least 8 characters');
     err.status = 400;
     throw err;
   }
@@ -62,4 +60,4 @@ function login(username, password) {
   return { token: sign(user.id), user: toPublicUser(user) };
 }
 
-module.exports = { signup, login, toPublicUser, levelFor };
+module.exports = { signup, login, toPublicUser };

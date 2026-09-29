@@ -1,123 +1,124 @@
 import { useState } from 'react'
-import { signup, login } from '../api/client.js'
+import { ArrowRight } from '@phosphor-icons/react'
+import Bezel from '../components/Bezel.jsx'
+import Button from '../components/Button.jsx'
+import { signup, login, ApiError } from '../api/client.js'
 
-export default function Auth({ initialMode = 'login', onAuthed }) {
-  const [mode, setMode] = useState(initialMode)
+function SignalTrace() {
+  const path =
+    'M0,40 L20,40 L28,10 L36,60 L44,40 L60,40 L68,20 L76,50 L84,40 L120,40 L128,10 L136,60 L144,40 L160,40 ' +
+    'L168,20 L176,50 L184,40 L220,40 L228,10 L236,60 L244,40 L260,40'
+  return (
+    <div className="mt-10 h-16 w-full max-w-md overflow-hidden opacity-60" aria-hidden="true">
+      <svg width="520" height="64" viewBox="0 0 520 64" className="animate-trace-scroll">
+        <path d={path} fill="none" stroke="#34d399" strokeWidth="1.5" />
+        <path d={path} fill="none" stroke="#34d399" strokeWidth="1.5" transform="translate(260,0)" />
+      </svg>
+    </div>
+  )
+}
+
+export default function Auth({ onAuthed }) {
+  const [mode, setMode] = useState('login')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-
-  const passwordTooShort = mode === 'signup' && password.length > 0 && password.length < 8
+  const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
-    if (!username.trim() || !password) {
-      setError('Username and password are required.')
-      return
-    }
-    if (mode === 'signup' && password.length < 8) {
-      setError('Password must be at least 8 characters.')
-      return
-    }
-
     setLoading(true)
     try {
-      const action = mode === 'signup' ? signup : login
-      await action(username.trim(), password)
-      onAuthed()
+      const fn = mode === 'login' ? login : signup
+      const data = await fn(username, password)
+      onAuthed(data.token, data.user)
     } catch (err) {
-      setError(err.message || 'Something went wrong.')
+      setError(err instanceof ApiError ? err.message : 'Something went wrong.')
     } finally {
       setLoading(false)
     }
   }
 
-  function retry() {
-    setError('')
-    handleSubmit({ preventDefault() {} })
-  }
-
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-950 bg-[radial-gradient(circle_at_top,_rgba(139,92,246,0.15),_transparent_60%)] px-4">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <h1 className="bg-gradient-to-r from-violet-400 to-emerald-400 bg-clip-text text-4xl font-extrabold text-transparent">
-            Questly
+    <div className="relative min-h-[100dvh] overflow-hidden px-4 py-16 md:py-0">
+      <div className="mx-auto flex min-h-[100dvh] max-w-6xl flex-col items-center justify-center gap-12 md:flex-row md:gap-20">
+        <div className="w-full max-w-lg animate-fade-up">
+          <span className="inline-flex rounded-full bg-white/5 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.2em] text-zinc-400">
+            Uptime, live
+          </span>
+          <h1 className="mt-5 text-5xl font-semibold leading-[1.05] tracking-tight text-zinc-50 md:text-6xl">
+            Know before they do.
           </h1>
-          <p className="mt-2 text-sm text-slate-400">Level up your real life.</p>
+          <p className="mt-5 max-w-md text-base text-zinc-400">
+            Signal watches your endpoints around the clock and streams every check to you the instant it
+            happens — no refresh, no polling, no surprises.
+          </p>
+          <SignalTrace />
         </div>
 
-        <form
-          onSubmit={handleSubmit}
-          className="rounded-2xl bg-slate-900/70 p-6 ring-1 ring-slate-800 shadow-xl shadow-black/30"
-        >
-          <h2 className="mb-4 text-lg font-semibold text-slate-100">
-            {mode === 'signup' ? 'Create your hero' : 'Welcome back, adventurer'}
-          </h2>
-
-          {error && (
-            <div className="mb-4 rounded-xl bg-rose-500/10 p-3 text-sm text-rose-300 ring-1 ring-rose-500/30">
-              <p>{error}</p>
-              <button
-                type="button"
-                onClick={retry}
-                className="mt-2 text-xs font-semibold text-rose-200 underline underline-offset-2"
-              >
-                Retry
-              </button>
+        <div className="w-full max-w-sm animate-fade-up" style={{ animationDelay: '120ms' }}>
+          <Bezel innerClassName="p-7">
+            <div className="mb-6 flex gap-1 rounded-full bg-black/30 p-1">
+              {['login', 'signup'].map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => {
+                    setMode(m)
+                    setError('')
+                  }}
+                  className={`focus-ring flex-1 rounded-full py-2 text-sm font-medium capitalize transition-colors duration-300 ${
+                    mode === m ? 'bg-emerald-400 text-black' : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  {m === 'login' ? 'Log in' : 'Sign up'}
+                </button>
+              ))}
             </div>
-          )}
 
-          <label className="mb-3 block">
-            <span className="mb-1 block text-xs font-medium text-slate-400">Username</span>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full rounded-xl border-none bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-slate-700 focus:ring-violet-500"
-            />
-          </label>
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              <div>
+                <label className="mb-1.5 block text-xs uppercase tracking-[0.15em] text-zinc-500">
+                  Username
+                </label>
+                <input
+                  autoFocus
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="focus-ring w-full rounded-xl bg-black/30 px-3 py-2.5 text-sm text-zinc-100 ring-1 ring-white/10"
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs uppercase tracking-[0.15em] text-zinc-500">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="focus-ring w-full rounded-xl bg-black/30 px-3 py-2.5 text-sm text-zinc-100 ring-1 ring-white/10"
+                  minLength={8}
+                  required
+                />
+                {mode === 'signup' && (
+                  <p className="mt-1.5 text-xs text-zinc-500">At least 8 characters.</p>
+                )}
+              </div>
 
-          <label className="mb-1 block">
-            <span className="mb-1 block text-xs font-medium text-slate-400">Password</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-xl border-none bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-slate-700 focus:ring-violet-500"
-            />
-          </label>
-          {passwordTooShort && (
-            <p className="mb-3 text-xs text-amber-400">Password should be at least 8 characters.</p>
-          )}
+              {error && (
+                <div className="rounded-xl bg-rose-400/10 px-3 py-2 text-sm text-rose-300 ring-1 ring-rose-400/20">
+                  {error}
+                </div>
+              )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading && (
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-950/40 border-t-slate-950" />
-            )}
-            {loading ? 'Please wait…' : mode === 'signup' ? 'Sign up' : 'Log in'}
-          </button>
-
-          <p className="mt-4 text-center text-sm text-slate-400">
-            {mode === 'signup' ? 'Already have an account?' : 'New here?'}{' '}
-            <button
-              type="button"
-              onClick={() => {
-                setMode(mode === 'signup' ? 'login' : 'signup')
-                setError('')
-              }}
-              className="font-semibold text-violet-300 hover:text-violet-200"
-            >
-              {mode === 'signup' ? 'Log in' : 'Sign up'}
-            </button>
-          </p>
-        </form>
+              <Button type="submit" icon={ArrowRight} disabled={loading} className="mt-2 justify-center">
+                {loading ? 'Please wait…' : mode === 'login' ? 'Log in' : 'Create account'}
+              </Button>
+            </form>
+          </Bezel>
+        </div>
       </div>
     </div>
   )

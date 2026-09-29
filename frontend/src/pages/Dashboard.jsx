@@ -1,138 +1,166 @@
-import { useEffect, useState } from 'react'
-import { getMe, getQuests, createQuest, updateQuest, deleteQuest } from '../api/client.js'
-import LevelBar from '../components/LevelBar.jsx'
-import StreakBadge from '../components/StreakBadge.jsx'
-import QuestForm from '../components/QuestForm.jsx'
-import QuestCard from '../components/QuestCard.jsx'
+import { useEffect, useMemo, useState, useCallback } from 'react'
+import { Plus, ArrowClockwise } from '@phosphor-icons/react'
+import Nav from '../components/Nav.jsx'
+import HealthHero from '../components/HealthHero.jsx'
+import MonitorCard from '../components/MonitorCard.jsx'
+import MonitorDetail from '../components/MonitorDetail.jsx'
+import MonitorModal from '../components/MonitorModal.jsx'
+import ToastStack from '../components/Toast.jsx'
+import Button from '../components/Button.jsx'
+import { useMonitorStream } from '../hooks/useMonitorStream.js'
+import { createMonitor, updateMonitor, ApiError } from '../api/client.js'
 
-export default function Dashboard({ onLogout }) {
-  const [me, setMe] = useState(null)
-  const [quests, setQuests] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [pulse, setPulse] = useState(false)
-  const [toast, setToast] = useState('')
+const SPANS = ['md:col-span-6', 'md:col-span-6', 'md:col-span-4', 'md:col-span-4', 'md:col-span-4']
 
-  async function loadAll() {
-    setLoading(true)
-    setError('')
-    try {
-      const [meData, questData] = await Promise.all([getMe(), getQuests()])
-      setMe(meData)
-      setQuests(questData)
-    } catch (err) {
-      setError(err.message || 'Failed to load your dashboard.')
-    } finally {
-      setLoading(false)
-    }
-  }
+export default function Dashboard({ token, user, onLogout }) {
+  const { monitors, setMonitors, connected, loaded, sessionChecks, lastEvent, refetch } = useMonitorStream(token)
+  const [selectedId, setSelectedId] = useState(null)
+  const [modal, setModal] = useState(null) // null | 'create' | monitor object (edit)
+  const [toasts, setToasts] = useState([])
 
   useEffect(() => {
-    loadAll()
+    // reflect fleet health into ambient background custom property
+    const down = monitors.filter((m) => m.status === 'down').length
+    const mix = monitors.length ? Math.min(down / monitors.length, 1) : 0
+    document.documentElement.style.setProperty('--ambient-mix', String(mix))
+  }, [monitors])
+
+  const pushToast = useCallback((message, tone = 'ok') => {
+    const id = Math.random().toString(36).slice(2)
+    setToasts((t) => [...t, { id, message, tone }])
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3200)
   }, [])
 
+  const selected = useMemo(() => monitors.find((m) => m.id === selectedId) || null, [monitors, selectedId])
+
   async function handleCreate(payload) {
-    const quest = await createQuest(payload)
-    setQuests((prev) => [quest, ...prev])
-  }
-
-  async function handleComplete(quest) {
-    const previousLevel = me?.level ?? 1
-    const updated = await updateQuest(quest.id, { completed: true })
-    setQuests((prev) => prev.map((q) => (q.id === updated.id ? updated : q)))
-
-    const freshMe = await getMe()
-    setMe(freshMe)
-
-    if (freshMe.level > previousLevel) {
-      setPulse(true)
-      setToast(`Level up! You're now level ${freshMe.level} 🎉`)
-      setTimeout(() => setPulse(false), 700)
-      setTimeout(() => setToast(''), 3000)
+    try {
+      const created = await createMonitor(payload)
+      setMonitors((prev) => [created, ...prev])
+      setModal(null)
+      pushToast(`${created.name} is now being watched.`)
+    } catch (err) {
+      throw err instanceof ApiError ? err : new Error('Could not create monitor.')
     }
   }
 
-  async function handleDelete(quest) {
-    await deleteQuest(quest.id)
-    setQuests((prev) => prev.filter((q) => q.id !== quest.id))
+  async function handleUpdate(payload) {
+    try {
+      const updated = await updateMonitor(modal.id, payload)
+      setMonitors((prev) => prev.map((m) => (m.id === updated.id ? updated : m)))
+      setModal(null)
+      pushToast(`${updated.name} updated.`)
+    } catch (err) {
+      throw err instanceof ApiError ? err : new Error('Could not update monitor.')
+    }
   }
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-violet-400" />
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4">
-        <div className="max-w-sm rounded-2xl bg-slate-900/70 p-6 text-center ring-1 ring-slate-800">
-          <p className="mb-4 text-rose-300">{error}</p>
-          <button
-            onClick={loadAll}
-            className="rounded-xl bg-violet-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-violet-400"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    )
+  function handleDeleted(id) {
+    setMonitors((prev) => prev.filter((m) => m.id !== id))
+    if (selectedId === id) setSelectedId(null)
+    pushToast('Monitor deleted.')
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 bg-[radial-gradient(circle_at_top,_rgba(139,92,246,0.12),_transparent_60%)] pb-16">
-      {toast && (
-        <div className="fixed left-1/2 top-6 z-50 -translate-x-1/2 rounded-xl bg-gradient-to-r from-violet-500 to-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg animate-card-in">
-          {toast}
+    <div className="relative min-h-[100dvh] px-4 pb-24 md:px-8">
+      <Nav username={user?.username} connected={connected} onLogout={onLogout} />
+
+      <div className="mx-auto mt-12 max-w-6xl">
+        <div className="mb-10 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <span className="inline-flex rounded-full bg-white/5 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.2em] text-zinc-400">
+              Dashboard
+            </span>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-50 md:text-4xl">
+              Fleet overview
+            </h1>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="ghost" icon={ArrowClockwise} onClick={refetch}>
+              Refresh
+            </Button>
+            <Button icon={Plus} onClick={() => setModal('create')}>
+              Add monitor
+            </Button>
+          </div>
         </div>
+
+        <HealthHero monitors={monitors} sessionChecks={sessionChecks} />
+
+        <div aria-live="polite" className="sr-only">
+          {lastEvent && `Monitor ${lastEvent.monitorId} check ${lastEvent.ok ? 'succeeded' : 'failed'}`}
+        </div>
+
+        <div className="mt-10">
+          {!loaded ? (
+            <LoadingSkeleton />
+          ) : monitors.length === 0 ? (
+            <EmptyState onAdd={() => setModal('create')} />
+          ) : (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-12">
+              {monitors.map((m, i) => (
+                <MonitorCard
+                  key={m.id}
+                  monitor={m}
+                  selected={selectedId === m.id}
+                  onSelect={(id) => setSelectedId((cur) => (cur === id ? null : id))}
+                  pulseKey={lastEvent?.monitorId === m.id ? lastEvent.at : null}
+                  span={SPANS[i % SPANS.length]}
+                />
+              ))}
+              {selected && (
+                <MonitorDetail
+                  monitor={selected}
+                  onEdit={(m) => setModal(m)}
+                  onDeleted={handleDeleted}
+                  onChanged={(m) => setMonitors((prev) => prev.map((x) => (x.id === m.id ? m : x)))}
+                  pulseKey={lastEvent?.monitorId === selected.id ? lastEvent.at : null}
+                />
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {modal && (
+        <MonitorModal
+          initial={modal === 'create' ? null : modal}
+          onClose={() => setModal(null)}
+          onSubmit={modal === 'create' ? handleCreate : handleUpdate}
+        />
       )}
 
-      <header className="mx-auto max-w-3xl px-4 pt-10">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="bg-gradient-to-r from-violet-400 to-emerald-400 bg-clip-text text-3xl font-extrabold text-transparent">
-              Questly
-            </h1>
-            <p className="mt-1 text-sm text-slate-400">Level up your real life.</p>
-          </div>
-          <button
-            onClick={onLogout}
-            className="rounded-xl bg-slate-800 px-3 py-1.5 text-sm font-medium text-slate-300 hover:bg-slate-700"
-          >
-            Log out
-          </button>
-        </div>
+      <ToastStack toasts={toasts} dismiss={(id) => setToasts((t) => t.filter((x) => x.id !== id))} />
+    </div>
+  )
+}
 
-        <div className="mt-6 rounded-2xl bg-slate-900/70 p-5 ring-1 ring-slate-800 shadow-lg shadow-black/20">
-          <div className="flex items-center justify-between gap-4">
-            <span className="text-lg font-semibold text-slate-100">
-              {me?.username ? `Welcome, ${me.username}` : 'Welcome'}
-            </span>
-            <StreakBadge streak={me?.streak ?? 0} />
-          </div>
-          <div className="mt-4">
-            <LevelBar xp={me?.xp ?? 0} level={me?.level ?? 1} pulse={pulse} />
-          </div>
-        </div>
-      </header>
+function LoadingSkeleton() {
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-12" aria-hidden="true">
+      {SPANS.map((span, i) => (
+        <div key={i} className={`${span} h-40 animate-pulse rounded-[2rem] bg-white/[0.03] ring-1 ring-white/10`} />
+      ))}
+    </div>
+  )
+}
 
-      <main className="mx-auto mt-8 max-w-3xl space-y-6 px-4">
-        <QuestForm onCreate={handleCreate} />
-
-        {quests.length === 0 ? (
-          <p className="text-center text-sm text-slate-500">
-            No quests yet — add your first one above and start earning XP.
-          </p>
-        ) : (
-          <div className="space-y-4">
-            {quests.map((quest) => (
-              <QuestCard key={quest.id} quest={quest} onComplete={handleComplete} onDelete={handleDelete} />
-            ))}
-          </div>
-        )}
-      </main>
+function EmptyState({ onAdd }) {
+  const path = 'M0,30 L20,30 L28,8 L36,45 L44,30 L80,30 L88,15 L96,38 L104,30 L140,30'
+  return (
+    <div className="flex flex-col items-center gap-6 rounded-[2rem] bg-white/[0.02] py-24 text-center ring-1 ring-white/5">
+      <svg width="280" height="60" viewBox="0 0 280 60" className="opacity-50" aria-hidden="true">
+        <path d={path} fill="none" stroke="#a78bfa" strokeWidth="1.5" />
+      </svg>
+      <div>
+        <h3 className="text-xl font-semibold text-zinc-100">Nothing to watch yet</h3>
+        <p className="mx-auto mt-2 max-w-sm text-sm text-zinc-500">
+          Add your first monitor to start streaming live uptime and latency checks.
+        </p>
+      </div>
+      <Button icon={Plus} onClick={onAdd}>
+        Add demo target
+      </Button>
     </div>
   )
 }
